@@ -13,6 +13,9 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { imageSizeFromFile, setConcurrency } from 'image-size/fromFile'
+setConcurrency(123456)
+
 
 // Get current directory in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -41,18 +44,26 @@ function isImageFile(filename) {
   return SUPPORTED_FORMATS.includes(ext);
 }
 
-function generateManifest(categoryPath, categoryName) {
+async function generateManifest(categoryPath, categoryName) {
   try {
     // Read all files in the category folder
     const files = fs.readdirSync(categoryPath);
-    
+    let photos = []
     // Filter for image files only
-    const photos = files
-      .filter(file => {
+    for (const file of files) {
+      try {
+        // log("file: " + file);
         const filePath = path.join(categoryPath, file);
-        return fs.statSync(filePath).isFile() && isImageFile(file);
-      })
-      .sort(); // Sort alphabetically for consistency
+        if (fs.statSync(filePath).isFile() && isImageFile(file)) {
+          const { width, height, orientation } = await imageSizeFromFile(filePath);
+        //   console.log(width, height, orientation);
+          photos.push([filePath.slice(6), file.slice(0, file.lastIndexOf('.')), width, height, orientation]);
+        }
+      } catch (err) {
+        log(`  ✗ Failed to read ${file}: ${err.message}`, 'yellow');
+      }
+    }
+    //   .sort(); // Sort alphabetically for consistency
     
     if (photos.length === 0) {
       log(`  ⚠️  No photos found in ${categoryName}`, 'yellow');
@@ -60,10 +71,10 @@ function generateManifest(categoryPath, categoryName) {
     }
     
     // Look for a file named 'thumbnail' or use first photo
-    const thumbnail = photos.find(p => 
-      p.toLowerCase().includes('thumbnail') || 
-      p.toLowerCase().includes('cover')
-    ) || photos[0];
+    const thumbnail = photos.find(p => {
+      const fname = p[0].toLowerCase();
+      return fname.includes('thumbnail') || fname.includes('cover');
+    }) || photos[0];
     
     // Create manifest object
     const manifest = {
