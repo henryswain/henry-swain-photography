@@ -172,9 +172,9 @@ body {
    ========================================== */
 .category-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--card-gap);
-  padding: 2rem 0;
+  grid-template-columns: minmax(200px, 500px) minmax(200px, 500px); /* 2 cards per row */;
+  gap: 2rem;
+  justify-content: center;
 }
 
 .category-card {
@@ -184,6 +184,7 @@ body {
   overflow: hidden;
   cursor: pointer;
   transition: all var(--transition-speed);
+  aspect-ratio: 8 / 7;
 }
 
 .category-card:hover {
@@ -194,7 +195,7 @@ body {
 
 .category-image-wrapper {
   width: 100%;
-  height: 220px;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   background-color: var(--card-bg);
   position: relative;
@@ -212,12 +213,18 @@ body {
 }
 
 .category-content {
-  padding: 1.25rem;
+  container-type: size;
+  padding-left: 1.5%;
+  padding-right: 10%;
+  padding-top: 0%;
+  padding-bottom: 1%;
+  width: 100%;
+  aspect-ratio: 8 / 1;
+  
 }
 
 .category-name {
-  font-size: var(--card-title-size);
-  margin-bottom: 0.5rem;
+  font-size: 35cqh;
   color: var(--text-primary);
   font-weight: 600;
 }
@@ -231,7 +238,7 @@ body {
 
 .category-count {
   color: var(--accent-color);
-  font-size: 0.875rem;
+  font-size: 25cqh;
   font-weight: 600;
 }
 
@@ -343,13 +350,27 @@ body {
   left: 0;
   right: 0;
   background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
-  padding: 0.75rem;
-  opacity: 0;
+  padding: 0.5rem 0.75rem;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  opacity: 1;
   transition: opacity var(--transition-speed);
 }
 
-.photo-item:hover .photo-overlay {
+.gallery-item:hover .photo-overlay {
   opacity: 1;
+}
+
+.photo-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: wrap;
+  max-width: 80%;
 }
 
 .photo-number {
@@ -490,7 +511,7 @@ body {
 /* ==========================================
    RESPONSIVE DESIGN
    ========================================== */
-@media (max-width: 768px) {
+@media (max-width: 768px) and (min-width: 481px) {
   :root {
     --title-size: 1.5rem;
     --section-title-size: 1.375rem;
@@ -511,7 +532,53 @@ body {
   
   .category-grid {
     grid-template-columns: 1fr;
+    margin-right: 0px;
+    margin-left: 0px;
   }
+  
+  .justified-gallery {
+    gap: 2px;
+  }
+  
+  .gallery-row {
+    gap: 2px;
+    margin-bottom: 2px;
+  }
+  
+  .lightbox-nav {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .lightbox-prev {
+    left: 1rem;
+  }
+  
+  .lightbox-next {
+    right: 1rem;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 992px) {
+  :root {
+    --title-size: 1.5rem;
+    --section-title-size: 1.375rem;
+    --container-padding: 1rem;
+    --photo-gap: 4px;
+  }
+  
+  .header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  
+  .header-content {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+
   
   .justified-gallery {
     gap: 2px;
@@ -545,8 +612,17 @@ body {
     gap: 2px;
     margin-bottom: 2px;
   }
-  
-  .category-image-wrapper {
-    height: 180px;
+
+  .category-grid {
+    grid-template-columns: 1fr;
+    margin-left: 0px;
+    margin-right: 0px;
+  }
+}
+
+/* Medium screens (e.g., min-width: 768px and max-width: 1199px) */
+@media (min-width: 992px) and (max-width: 1200px) {
+  .category-grid {
+    grid-template-columns: repeat(2, 1fr); /* 2 cards per row */
   }
 }

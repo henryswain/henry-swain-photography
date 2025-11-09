@@ -9,7 +9,6 @@ const PHOTO_CATEGORIES = [
   {
     id: 'birds',
     name: 'Birds',
-    description: 'Various species of birds',
     folder: 'birds',
     subcategories: [
       { id: 'blackbirds', name: 'Blackbirds', folder: 'birds/blackbirds' },
@@ -30,21 +29,18 @@ const PHOTO_CATEGORIES = [
   {
     id: 'insects',
     name: 'Insects',
-    description: 'Varios species of insects',
     folder: 'insects',
     // No subcategories - this will show photos directly
   },
   {
     id: 'mammals',
     name: 'Mammals',
-    description: 'Various species of mammals',
     folder: 'mammals',
     // No subcategories - this will show photos directly
   },
   {
     id: 'plants_landscapes_miscellaneous_others',
     name: 'Plants, Landscapes & Miscellaneous Others',
-    description: 'A variety of plants, landscapes, and other miscellaneous subjects',
     folder: 'plants_landscapes_miscellaneous_others',
     // No subcategories - this will show photos directly
   },
@@ -68,21 +64,21 @@ function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect 
             const img = new Image();
             img.onload = () => {
               dimensions[index] = {
-                width: img.naturalWidth,
-                height: img.naturalHeight,
-                aspectRatio: img.naturalWidth / img.naturalHeight
+                width: photo[2],
+                height: photo[3],
+                aspectRatio: photo[2] / photo[3],
               };
               resolve();
             };
-            img.onerror = () => {
-              dimensions[index] = {
-                width: 1,
-                height: 1,
-                aspectRatio: 1
-              };
-              resolve();
-            };
-            img.src = photo;
+            // img.onerror = () => {
+            //   dimensions[index] = {
+            //     width: 1,
+            //     height: 1,
+            //     aspectRatio: 1
+            //   };
+            //   resolve();
+            // };
+            img.src = photo[0];
           });
         })
       );
@@ -171,18 +167,23 @@ function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect 
               }}
             >
               <img
-                src={item.photo}
+                src={encodeURI(item.photo[0])}
                 alt={`Photo ${item.index + 1}`}
                 className="gallery-image"
               />
+            {/* caption pulled from manifest second element */}
+            <div className="photo-overlay">
+              <div className="photo-title">{item.photo[1]}</div>
+              <div className="photo-number">{item.index + 1}</div>
+            </div>
               {selectedPhotos.has(item.index) && (
                 <div className="selection-overlay">
                   <div className="selection-checkmark">✓</div>
                 </div>
               )}
-              <div className="photo-overlay">
+              {/* <div className="photo-overlay">
                 <div className="photo-number">{item.index + 1}</div>
-              </div>
+              </div> */}
             </div>
           ))}
         </div>
@@ -205,7 +206,6 @@ function App() {
         PHOTO_CATEGORIES.map(async (category) => {
           try {
             let categoryData = { ...category };
-            
             if (category.subcategories) {
               const loadedSubs = await Promise.all(
                 category.subcategories.map(async (sub) => {
@@ -215,10 +215,10 @@ function App() {
                     const manifest = await response.json();
                     return {
                       ...sub,
-                      photos: manifest.photos.map(p => `/photos/${sub.folder}/${p}`),
-                      thumbnail: manifest.thumbnail 
-                        ? `/photos/${sub.folder}/${manifest.thumbnail}`
-                        : `/photos/${sub.folder}/${manifest.photos[0]}`,
+                      photos: manifest.photos,
+                      thumbnail: manifest.thumbnail,
+                        // ? `/photos/${sub.folder}/${manifest.thumbnail}`
+                        // : `/photos/${sub.folder}/${manifest.photos[0]}`,
                       count: manifest.photos.length
                     };
                   } catch (error) {
@@ -234,10 +234,10 @@ function App() {
                 const response = await fetch(`/photos/${category.folder}/manifest.json`);
                 if (!response.ok) throw new Error('Manifest not found');
                 const manifest = await response.json();
-                categoryData.photos = manifest.photos.map(p => `/photos/${category.folder}/${p}`);
+                categoryData.photos = manifest.photos;
                 categoryData.thumbnail = manifest.thumbnail 
-                  ? `/photos/${category.folder}/${manifest.thumbnail}`
-                  : `/photos/${category.folder}/${manifest.photos[0]}`;
+                  // ? `/photos/${category.folder}/${manifest.thumbnail}`
+                  // : `/photos/${category.folder}/${manifest.photos[0]}`;
                 categoryData.totalCount = manifest.photos.length;
               } catch (error) {
                 console.error(`Failed to load ${category.name}:`, error);
@@ -343,7 +343,7 @@ function App() {
     <div className="app">
       <header className="header">
         <div className="header-content">
-          <h1 className="title">Nature & Wildlife Gallery</h1>
+          <h1 className="title">Henry Swain Photography</h1>
           {showPhotos && selectedPhotos.size > 0 && (
             <div className="selection-info">
               {selectedPhotos.size} selected
@@ -368,7 +368,7 @@ function App() {
               >
                 <div className="category-image-wrapper">
                   <img
-                    src={category.thumbnail || (category.subcategories?.[0]?.thumbnail)}
+                    src={category["thumbnail"]?.[0] || category.subcategories?.[0]["thumbnail"]?.[0]}
                     alt={category.name}
                     className="category-image"
                     onError={(e) => {
@@ -384,7 +384,6 @@ function App() {
                 </div>
                 <div className="category-content">
                   <h2 className="category-name">{category.name}</h2>
-                  <p className="category-description">{category.description}</p>
                   <p className="category-count">{category.totalCount} photos</p>
                 </div>
               </div>
@@ -402,7 +401,7 @@ function App() {
                 >
                   <div className="category-image-wrapper">
                     <img
-                      src={sub.thumbnail}
+                      src={sub["thumbnail"]?.[0]}
                       alt={sub.name}
                       className="category-image"
                       onError={(e) => {
@@ -453,7 +452,7 @@ function App() {
 
           <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
             <img
-              src={currentPhotos[lightboxIndex]}
+              src={currentPhotos[lightboxIndex][0]}
               alt={`Photo ${lightboxIndex + 1}`}
               className="lightbox-image"
             />
