@@ -12,6 +12,8 @@ dist
 dist-ssr
 *.local
 
+
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,6 +24,26 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+
+public/photos/**/thumbnails
+public/photos/**/compressed
+
+public/photos/birdsblackbirds/_previews/*
+public/photos/birds/cardinals_grosebeaks_allies/_previews/*
+public/photos/birds/finches/_previews/*
+public/photos/birds/flycatchers/_previews/*
+public/photos/birds/game_birds/_previews/*
+public/photos/birds/miscellaneous_others/_previews/*
+public/photos/birds/raptors/_previews/*
+public/photos/birds/shorebirds_herons_cranes/_previews/*
+public/photos/birds/sparrows/_previews/*
+public/photos/birds/warblers_kinglets/_previews/*
+public/photos/birds/woodpeckers/_previews/*
+public/photos/insects/_previews/*
+public/photos/mammals/_previews/*
+public/photos/plants_landscapes_miscellaneous_others/_previews/*
+
 
 public/photos/birds/blackbirds/manifest.json
 public/photos/birds/cardinals_grosebeaks_allies/manifest.json

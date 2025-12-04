@@ -1,7 +1,15 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight, FolderOpen } from 'lucide-react';
 import './gallery.css';
+ 
+// inline "no picture" SVG (encoded) — used as the only fallback
+const NO_IMAGE_SVG = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23e6e6e6" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="18"%3ENo Image%3C/text%3E%3C/svg%3E';
+
+// helper to produce a safe src (encode real paths, leave data: URIs alone)
+function safeSrc(url) {
+  if (!url) return NO_IMAGE_SVG;
+  return String(url).startsWith('data:') ? url : encodeURI(url);
+}
 
 // Configure your photo categories here
 // Support for nested subcategories!
@@ -167,9 +175,11 @@ function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect 
               }}
             >
               <img
-                src={encodeURI(item.photo[0])}
+                src={ safeSrc(item.photo[5]?.small || item.photo[0]) }
                 alt={`Photo ${item.index + 1}`}
                 className="gallery-image"
+                loading="lazy"
+                onError={(e) => { e.target.onerror = null; e.target.src = NO_IMAGE_SVG; }}
               />
             {/* caption pulled from manifest second element */}
             <div className="photo-overlay">
@@ -368,11 +378,18 @@ function App() {
               >
                 <div className="category-image-wrapper">
                   <img
-                    src={category["thumbnail"]?.[0] || category.subcategories?.[0]["thumbnail"]?.[0]}
+                    src={safeSrc(
+                      category.thumbnail?.[5]?.small
+                      || category.thumbnail?.[0]
+                      || category.subcategories?.[0]?.thumbnail?.[5]?.small
+                      || category.subcategories?.[0]?.thumbnail?.[0]
+                    )}
                     alt={category.name}
                     className="category-image"
+                    loading="lazy"
                     onError={(e) => {
-                      e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23ddd" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="20"%3ENo Image%3C/text%3E%3C/svg%3E';
+                      e.target.onerror = null;
+                      e.target.src = NO_IMAGE_SVG;
                     }}
                   />
                   {category.subcategories && (
@@ -401,13 +418,15 @@ function App() {
                 >
                   <div className="category-image-wrapper">
                     <img
-                      src={sub["thumbnail"]?.[0]}
-                      alt={sub.name}
-                      className="category-image"
-                      onError={(e) => {
-                        e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23ddd" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="20"%3ENo Image%3C/text%3E%3C/svg%3E';
-                      }}
-                    />
+                      src={safeSrc(sub.thumbnail?.[5]?.small || sub.thumbnail?.[0])}
+                       alt={sub.name}
+                       className="category-image"
+                       loading="lazy"
+                       onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = NO_IMAGE_SVG;
+                       }}
+                     />
                   </div>
                   <div className="category-content">
                     <h2 className="category-name">{sub.name}</h2>
@@ -451,11 +470,17 @@ function App() {
           )}
 
           <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={currentPhotos[lightboxIndex][0]}
-              alt={`Photo ${lightboxIndex + 1}`}
-              className="lightbox-image"
-            />
+            {/* <div className='lightbox-content'> */}
+              <img
+                src={currentPhotos[lightboxIndex][0]}
+                alt={`Photo ${lightboxIndex + 1}`}
+                className="lightbox-image"
+              />
+              <p style={{ color: 'white', fontSize: '1.5rem' }}>{currentPhotos[lightboxIndex][1]}</p>
+              <div className="lightbox-product-info">
+                <h3 className="lightbox-product-title">Click here to see buying options</h3>
+              </div>
+            {/* </div> */}
             <div className="lightbox-info">
               <div className="lightbox-counter">
                 {lightboxIndex + 1} / {currentPhotos.length}
