@@ -4,11 +4,22 @@ import './gallery.css';
  
 // inline "no picture" SVG (encoded) — used as the only fallback
 const NO_IMAGE_SVG = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23e6e6e6" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="18"%3ENo Image%3C/text%3E%3C/svg%3E';
+const API_BASE_PATH = 'https://henry-swain-photography-backend.vercel.app';
 
+// const API_BASE_PATH = "http://192.168.1.4:3000";
 // helper to produce a safe src (encode real paths, leave data: URIs alone)
 function safeSrc(url) {
   if (!url) return NO_IMAGE_SVG;
   return String(url).startsWith('data:') ? url : encodeURI(url);
+}
+
+// helper to clean up Cloudinary display names (remove random suffix, replace underscores with spaces)
+function cleanDisplayName(displayName) {
+  if (!displayName) return '';
+  // Remove the random suffix after the last underscore (e.g., "bird_name_a1b2c3" -> "bird_name")
+  const withoutSuffix = displayName.replace(/_[a-zA-Z0-9]{6}$/, '');
+  // Replace all underscores with spaces
+  return withoutSuffix.replace(/_/g, ' ');
 }
 
 // Configure your photo categories here
@@ -57,13 +68,43 @@ const PHOTO_CATEGORIES = [
 const TARGET_ROW_HEIGHT = 300; // Target height for each row in pixels
 const MARGIN = 4; // Gap between photos
 
-function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect }) {
+function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect, onLoadingChange }) {
   const [rows, setRows] = useState([]);
   const [photoDimensions, setPhotoDimensions] = useState({});
+  const [orientation, setOrientation] = useState(0);
+  const [imagesLoaded, setImagesLoaded] = useState(false);
   const containerRef = useRef(null);
+
+  // Listen for orientation changes
+  useEffect(() => {
+    const handleOrientationChange = (event) => {
+      const newOrientation = event?.target?.screen?.orientation?.angle || window.screen?.orientation?.angle || Date.now();
+      setOrientation(newOrientation);
+      // Force recalculation on next render
+      if (containerRef.current) {
+        containerRef.current.style.width = '100%';
+      }
+    };
+
+    const handleResize = () => {
+      // Use timestamp to force re-render on resize
+      setOrientation(Date.now());
+    };
+
+    window.addEventListener('orientationchange', handleOrientationChange);
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('orientationchange', handleOrientationChange);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
   useEffect(() => {
     const loadImageDimensions = async () => {
+      setImagesLoaded(false);
+      if (onLoadingChange) onLoadingChange(true);
+      
       const dimensions = {};
       
       await Promise.all(
@@ -72,32 +113,34 @@ function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect 
             const img = new Image();
             img.onload = () => {
               dimensions[index] = {
-                width: photo[2],
-                height: photo[3],
-                aspectRatio: photo[2] / photo[3],
+                width: photo.width,
+                height: photo.height,
+                aspectRatio: photo.width / photo.height,
               };
               resolve();
             };
-            // img.onerror = () => {
-            //   dimensions[index] = {
-            //     width: 1,
-            //     height: 1,
-            //     aspectRatio: 1
-            //   };
-            //   resolve();
-            // };
-            img.src = photo[0];
+            img.onerror = () => {
+              dimensions[index] = {
+                width: 1,
+                height: 1,
+                aspectRatio: 1
+              };
+              resolve();
+            };
+            img.src = photo.secure_url;
           });
         })
       );
       
       setPhotoDimensions(dimensions);
+      setImagesLoaded(true);
+      if (onLoadingChange) onLoadingChange(false);
     };
 
     if (photos.length > 0) {
       loadImageDimensions();
     }
-  }, [photos]);
+  }, [photos, onLoadingChange]);
 
   useEffect(() => {
     if (Object.keys(photoDimensions).length === 0 || !containerRef.current) return;
@@ -152,8 +195,9 @@ function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect 
     resizeObserver.observe(containerRef.current);
 
     return () => resizeObserver.disconnect();
-  }, [photoDimensions, photos]);
+  }, [photoDimensions, photos, orientation]);
 
+  console.log("Justified gallery rows:", rows);
   return (
     <div ref={containerRef} className="justified-gallery">
       {rows.map((row, rowIndex) => (
@@ -175,15 +219,15 @@ function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect 
               }}
             >
               <img
-                src={ safeSrc(item.photo[5]?.small || item.photo[0]) }
-                alt={`Photo ${item.index + 1}`}
+                src={item.photo.secure_url}
+                alt={item.photo.display_name}
                 className="gallery-image"
                 loading="lazy"
                 onError={(e) => { e.target.onerror = null; e.target.src = NO_IMAGE_SVG; }}
               />
             {/* caption pulled from manifest second element */}
             <div className="photo-overlay">
-              <div className="photo-title">{item.photo[1]}</div>
+              <div className="photo-title">{cleanDisplayName(item.photo.display_name)}</div>
               <div className="photo-number">{item.index + 1}</div>
             </div>
               {selectedPhotos.has(item.index) && (
@@ -203,78 +247,163 @@ function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect 
 }
 
 function App() {
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(PHOTO_CATEGORIES);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState(null);
   const [lightboxIndex, setLightboxIndex] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [categoryLoading, setCategoryLoading] = useState(false);
+  const [galleryLoading, setGalleryLoading] = useState(false);
   const [selectedPhotos, setSelectedPhotos] = useState(new Set());
 
+  // Load category data on demand
+  const loadCategoryData = async (category) => {
+    setCategoryLoading(true);
+    try {
+      let categoryData = { ...category };
+      
+      if (category.subcategories) {
+        // Load all subcategories
+        const loadedSubs = await Promise.all(
+          category.subcategories.map(async (sub) => {
+            // Skip if already loaded
+            if (sub.photos && sub.photos.length > 0) return sub;
+            
+            try {
+              console.log(`Loading subcategory - ${sub.folder.split('/')[1]}`);
+              const response = await fetch(`${API_BASE_PATH}/birds/${sub.folder.split('/')[1]}`);
+              if (!response.ok) throw new Error('Manifest not found');
+              const manifest = await response.json();
+              
+              const thumbnailImage = manifest["resources"].find(resource => 
+                resource.tags && resource.tags.includes("thumbnail")
+              ) || manifest["resources"][0];
+              
+              return {
+                ...sub,
+                photos: manifest["resources"],
+                thumbnail: thumbnailImage,
+                count: manifest["total_count"]
+              };
+            } catch (error) {
+              console.error(`Failed to load ${sub.name}:`, error);
+              return { ...sub, photos: [], thumbnail: null, count: 0 };
+            }
+          })
+        );
+        
+        categoryData.subcategories = loadedSubs;
+        categoryData.totalCount = loadedSubs.reduce((sum, sub) => sum + sub.count, 0);
+        
+        // Fetch outer category thumbnail
+        try {
+          const thumbnailTagName = `${category.id}-thumbnail`;
+          const thumbnailResponse = await fetch(`${API_BASE_PATH}/thumbnail/${thumbnailTagName}`);
+          if (thumbnailResponse.ok) {
+            const thumbnailData = await thumbnailResponse.json();
+            if (thumbnailData.resources && thumbnailData.resources.length > 0) {
+              categoryData.thumbnail = thumbnailData.resources[0];
+            }
+          }
+        } catch (error) {
+          console.log(`No specific thumbnail found for ${category.name}`);
+        }
+      } else {
+        // Skip if already loaded
+        if (!category.photos || category.photos.length === 0) {
+          try {
+            console.log(`Loading category - ${category.folder}`);
+            const response = await fetch(`${API_BASE_PATH}/${category.folder}`);
+            if (!response.ok) throw new Error('Manifest not found');
+            const manifest = await response.json();
+            
+            const thumbnailImage = manifest["resources"].find(resource => 
+              resource.tags && resource.tags.includes("thumbnail")
+            ) || manifest["resources"][0];
+            
+            categoryData.photos = manifest["resources"];
+            categoryData.thumbnail = thumbnailImage;
+            categoryData.totalCount = manifest["total_count"];
+          } catch (error) {
+            console.error(`Failed to load ${category.name}:`, error);
+            categoryData.photos = [];
+            categoryData.thumbnail = null;
+            categoryData.totalCount = 0;
+          }
+        }
+      }
+      
+      // Update categories array with loaded data
+      setCategories(prev => prev.map(cat => 
+        cat.id === category.id ? categoryData : cat
+      ));
+      
+      setCategoryLoading(false);
+      return categoryData;
+    } catch (error) {
+      console.error(`Failed to load category ${category.name}:`, error);
+      setCategoryLoading(false);
+      return category;
+    }
+  };
+
+  // Load thumbnail counts on initial load (lightweight)
   useEffect(() => {
-    const loadCategories = async () => {
-      const loadedCategories = await Promise.all(
+    const loadThumbnailCounts = async () => {
+      setLoading(true);
+      const updatedCategories = await Promise.all(
         PHOTO_CATEGORIES.map(async (category) => {
           try {
-            let categoryData = { ...category };
             if (category.subcategories) {
-              const loadedSubs = await Promise.all(
-                category.subcategories.map(async (sub) => {
-                  try {
-                    const response = await fetch(`/photos/${sub.folder}/manifest.json`);
-                    if (!response.ok) throw new Error('Manifest not found');
-                    const manifest = await response.json();
-                    return {
-                      ...sub,
-                      photos: manifest.photos,
-                      thumbnail: manifest.thumbnail,
-                        // ? `/photos/${sub.folder}/${manifest.thumbnail}`
-                        // : `/photos/${sub.folder}/${manifest.photos[0]}`,
-                      count: manifest.photos.length
-                    };
-                  } catch (error) {
-                    console.error(`Failed to load ${sub.name}:`, error);
-                    return { ...sub, photos: [], thumbnail: null, count: 0 };
-                  }
-                })
-              );
-              categoryData.subcategories = loadedSubs;
-              categoryData.totalCount = loadedSubs.reduce((sum, sub) => sum + sub.count, 0);
-            } else {
-              try {
-                const response = await fetch(`/photos/${category.folder}/manifest.json`);
-                if (!response.ok) throw new Error('Manifest not found');
-                const manifest = await response.json();
-                categoryData.photos = manifest.photos;
-                categoryData.thumbnail = manifest.thumbnail 
-                  // ? `/photos/${category.folder}/${manifest.thumbnail}`
-                  // : `/photos/${category.folder}/${manifest.photos[0]}`;
-                categoryData.totalCount = manifest.photos.length;
-              } catch (error) {
-                console.error(`Failed to load ${category.name}:`, error);
-                categoryData.photos = [];
-                categoryData.thumbnail = null;
-                categoryData.totalCount = 0;
+              // Just get counts for subcategories (no photo data)
+              const thumbnailTagName = `${category.id}-thumbnail`;
+              const thumbnailResponse = await fetch(`${API_BASE_PATH}/thumbnail/${thumbnailTagName}`);
+              let thumbnail = null;
+              if (thumbnailResponse.ok) {
+                const thumbnailData = await thumbnailResponse.json();
+                if (thumbnailData.resources && thumbnailData.resources.length > 0) {
+                  thumbnail = thumbnailData.resources[0];
+                }
               }
+              
+              return {
+                ...category,
+                thumbnail,
+                totalCount: '...' // Placeholder
+              };
+            } else {
+              // Get thumbnail for non-subcategory items
+              const response = await fetch(`${API_BASE_PATH}/${category.folder}`);
+              const manifest = await response.json();
+              const thumbnailImage = manifest["resources"].find(resource => 
+                resource.tags && resource.tags.includes("thumbnail")
+              ) || manifest["resources"][0];
+              
+              return {
+                ...category,
+                thumbnail: thumbnailImage,
+                totalCount: manifest["total_count"]
+              };
             }
-            
-            return categoryData;
           } catch (error) {
-            console.error(`Failed to load category ${category.name}:`, error);
-            return { ...category, photos: [], thumbnail: null, totalCount: 0 };
+            console.error(`Failed to load thumbnail for ${category.name}:`, error);
+            return category;
           }
         })
       );
-      setCategories(loadedCategories);
+      setCategories(updatedCategories);
       setLoading(false);
     };
 
-    loadCategories();
+    loadThumbnailCounts();
   }, []);
 
   const getCurrentPhotos = () => {
     if (selectedSubcategory) {
+      console.log("Selected subcategory photos:", selectedSubcategory.photos);
       return selectedSubcategory.photos;
     } else if (selectedCategory && selectedCategory.photos) {
+      console.log("Selected category photos:", selectedCategory.photos);
       return selectedCategory.photos;
     }
     return [];
@@ -335,6 +464,27 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [lightboxIndex, selectedCategory, selectedSubcategory]);
 
+  // Prevent body scroll when lightbox is open
+  useEffect(() => {
+    if (lightboxIndex !== null) {
+      // Store current scroll position
+      const scrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+      document.body.style.overflow = 'hidden';
+      
+      return () => {
+        // Restore scroll position
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        document.body.style.overflow = '';
+        window.scrollTo(0, scrollY);
+      };
+    }
+  }, [lightboxIndex]);
+
   if (loading) {
     return (
       <div className="app">
@@ -351,6 +501,13 @@ function App() {
 
   return (
     <div className="app">
+      {(categoryLoading || galleryLoading) && (
+        <div className="loading-overlay">
+          <div className="loading-spinner"></div>
+          <p>Loading photos...</p>
+        </div>
+      )}
+      
       <header className="header">
         <div className="header-content">
           <h1 className="title">Henry Swain Photography</h1>
@@ -374,16 +531,14 @@ function App() {
               <div
                 key={category.id}
                 className="category-card"
-                onClick={() => setSelectedCategory(category)}
+                onClick={async () => {
+                  const loadedCategory = await loadCategoryData(category);
+                  setSelectedCategory(loadedCategory);
+                }}
               >
                 <div className="category-image-wrapper">
-                  <img
-                    src={safeSrc(
-                      category.thumbnail?.[5]?.small
-                      || category.thumbnail?.[0]
-                      || category.subcategories?.[0]?.thumbnail?.[5]?.small
-                      || category.subcategories?.[0]?.thumbnail?.[0]
-                    )}
+                  <img 
+                    src={category.thumbnail?.secure_url || category.subcategories?.[0]?.thumbnail?.secure_url || NO_IMAGE_SVG} 
                     alt={category.name}
                     className="category-image"
                     loading="lazy"
@@ -414,19 +569,26 @@ function App() {
                 <div
                   key={sub.id}
                   className="category-card subcategory-card"
-                  onClick={() => setSelectedSubcategory(sub)}
+                  onClick={() => {
+                    setCategoryLoading(true);
+                    // Small delay to show spinner, then set subcategory
+                    setTimeout(() => {
+                      setSelectedSubcategory(sub);
+                      setCategoryLoading(false);
+                    }, 50);
+                  }}
                 >
                   <div className="category-image-wrapper">
                     <img
-                      src={safeSrc(sub.thumbnail?.[5]?.small || sub.thumbnail?.[0])}
-                       alt={sub.name}
-                       className="category-image"
-                       loading="lazy"
-                       onError={(e) => {
+                      src={sub.thumbnail?.secure_url || NO_IMAGE_SVG}
+                      alt={sub.name}
+                      className="category-image"
+                      loading="lazy"
+                      onError={(e) => {
                         e.target.onerror = null;
                         e.target.src = NO_IMAGE_SVG;
-                       }}
-                     />
+                      }}
+                    />
                   </div>
                   <div className="category-content">
                     <h2 className="category-name">{sub.name}</h2>
@@ -446,6 +608,7 @@ function App() {
               onPhotoClick={openLightbox}
               selectedPhotos={selectedPhotos}
               onPhotoSelect={togglePhotoSelection}
+              onLoadingChange={setGalleryLoading}
             />
           </div>
         ) : null}
@@ -470,17 +633,12 @@ function App() {
           )}
 
           <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-            {/* <div className='lightbox-content'> */}
               <img
-                src={currentPhotos[lightboxIndex][0]}
-                alt={`Photo ${lightboxIndex + 1}`}
+                src={currentPhotos[lightboxIndex].secure_url}
+                alt={currentPhotos[lightboxIndex].display_name}
                 className="lightbox-image"
               />
-              <p style={{ color: 'white', fontSize: '1.5rem' }}>{currentPhotos[lightboxIndex][1]}</p>
-              <div className="lightbox-product-info">
-                <h3 className="lightbox-product-title">Click here to see buying options</h3>
-              </div>
-            {/* </div> */}
+              <p style={{ color: 'white', fontSize: '1.5rem' }}>{cleanDisplayName(currentPhotos[lightboxIndex].display_name)}</p>
             <div className="lightbox-info">
               <div className="lightbox-counter">
                 {lightboxIndex + 1} / {currentPhotos.length}
