@@ -1,10 +1,3 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-}
-
 .logo {
   height: 6em;
   padding: 1.5em;
@@ -39,4 +32,49 @@
 
 .read-the-docs {
   color: #888;
+}
+
+/* NAVBAR: polished, minimal, non-disruptive styles */
+.site-nav {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  /* no margin/padding to avoid shifting layout */
+  margin: 0;
+  padding: 0;
+}
+
+.site-nav .nav-button {
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.08);
+  color: inherit;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 140ms ease, background 160ms ease;
+  box-shadow: 0 2px 6px rgba(16,24,40,0.04);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.site-nav .nav-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(16,24,40,0.06);
+}
+
+.site-nav .nav-button:focus {
+  outline: 3px solid rgba(6,182,212,0.12);
+  outline-offset: 2px;
+}
+
+.site-nav .nav-button.active {
+  background: linear-gradient(180deg,#06b6d4,#0891b2);
+  color: #ffffff;
+  border-color: rgba(4,120,130,0.5);
+  box-shadow: 0 10px 26px rgba(6,182,212,0.12);
+}
+
+@media (max-width: 480px) {
+  .site-nav .nav-button { padding: 6px 10px; font-size: 14px; }
 }
