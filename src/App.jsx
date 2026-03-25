@@ -1,21 +1,27 @@
+// High-level application file: main React app, gallery layout, and data loaders
+// - Contains the JustifiedGallery component (renders photo rows)
+// - `App` holds global UI state and orchestrates data loading via the backend API
+// - Helper functions near the top provide safe URL handling and display name cleaning
+// - Category and vacation group configuration lived here for convenience
+
 import { useState, useEffect, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight, FolderOpen } from 'lucide-react';
 import './gallery.css';
 import './App.css';
+import NavBar from './components/NavBar';
+import TripsPage from './pages/TripsPage';
+import ProfilePage from './pages/ProfilePage';
+import CategoriesPage from './pages/CategoriesPage';
  
 // inline "no picture" SVG (encoded) — used as the only fallback
 const NO_IMAGE_SVG = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23e6e6e6" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="18"%3ENo Image%3C/text%3E%3C/svg%3E';
 const API_BASE_PATH = 'https://henry-swain-photography-backend.vercel.app';
 // const API_BASE_PATH = 'http://localhost:3000'
 // const API_BASE_PATH = "http://192.168.1.4:3000";
-// helper to produce a safe src (encode real paths, leave data: URIs alone)
-function safeSrc(url) {
-  if (!url) return NO_IMAGE_SVG;
-  return String(url).startsWith('data:') ? url : encodeURI(url);
-}
 
 // helper to clean up Cloudinary display names (remove random suffix, replace underscores with spaces)
 function cleanDisplayName(displayName) {
+  // Normalizes display names coming from Cloudinary so captions look pleasant
   if (!displayName) return '';
   // Remove the random suffix after the last underscore (e.g., "bird_name_a1b2c3" -> "bird_name")
   const withoutSuffix = displayName.replace(/_[a-zA-Z0-9]{6}$/, '');
@@ -23,8 +29,7 @@ function cleanDisplayName(displayName) {
   return withoutSuffix.replace(/_/g, ' ');
 }
 
-// Configure your photo categories here
-// Support for nested subcategories!
+
 const PHOTO_CATEGORIES = [
   {
     id: 'birds',
@@ -59,7 +64,6 @@ const PHOTO_CATEGORIES = [
       ] },
       { id: 'woodpeckers', name: 'Woodpeckers', folder: 'birds/woodpeckers' },
       { id: 'indian_peafowl', name: 'Indean Peafowl', folder: 'birds/indian_peafowl' }
-      // Add more subcategories as needed
     ]
   },
   {
@@ -72,7 +76,6 @@ const PHOTO_CATEGORIES = [
       { id: "dragonflies_damselflies", name: "Dragonflies", folder: "insects/dragonflies_damselflies"},
       { id: "other_insects", name: "Other Insects", folder: "insects/other_insects"}
     ]
-    // No subcategories - this will show photos directly
   },
   { 
     id: "cypress_swamp",
@@ -83,13 +86,11 @@ const PHOTO_CATEGORIES = [
     id: 'mammals',
     name: 'Mammals',
     folder: 'mammals',
-    // No subcategories - this will show photos directly
   },
   {
     id: 'plants_landscapes_miscellaneous_others',
     name: 'Plants, Landscapes & Miscellaneous Others',
     folder: 'plants_landscapes_miscellaneous_others',
-    // No subcategories - this will show photos directly
   },
   {
     id: 'reptiles',
@@ -98,7 +99,6 @@ const PHOTO_CATEGORIES = [
   },
 ];
 
-// VACATION / TRIP GROUPS
 const VACATION_GROUPS = [
   { id: 'louisiana', name: 'Louisiana', folder: 'louisiana', subcategories: [
     { id: "alligators_other_reptiles", name: "Alligators and Other Reptiles", folder: "louisiana/alligators_other_reptiles" },
@@ -118,6 +118,10 @@ const TARGET_ROW_HEIGHT = 300; // Target height for each row in pixels
 const MARGIN = 4; // Gap between photos
 
 function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect, onLoadingChange }) {
+  // Renders photos into justified rows similar to Flickr-style galleries.
+  // - Measures image aspect ratios and then packs images into rows with a target row height
+  // - Calls onPhotoClick / onPhotoSelect for interaction
+  // - Not intended to be a generic library component; tuned to this application's needs
   const [rows, setRows] = useState([]);
   const [photoDimensions, setPhotoDimensions] = useState({});
   const [orientation, setOrientation] = useState(0);
@@ -246,7 +250,6 @@ function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect,
     return () => resizeObserver.disconnect();
   }, [photoDimensions, photos, orientation]);
 
-  console.log("Justified gallery rows:", rows);
   return (
     <div ref={containerRef} className="justified-gallery">
       {rows.map((row, rowIndex) => (
@@ -284,9 +287,6 @@ function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect,
                   <div className="selection-checkmark">✓</div>
                 </div>
               )}
-              {/* <div className="photo-overlay">
-                <div className="photo-number">{item.index + 1}</div>
-              </div> */}
             </div>
           ))}
         </div>
@@ -296,6 +296,12 @@ function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect,
 }
 
 function App() {
+  // Top-level application component
+  // State overview:
+  // - `categories`: configuration + lightweight metadata for each top-level category
+  // - `selectionStack`: breadcrumb-like stack representing drilling into nested folders
+  // - `page`: which main page is visible ('categories' | 'trips' | 'profile')
+  // - various loading flags and lightbox state
   const [categories, setCategories] = useState(PHOTO_CATEGORIES);
   // selection stack: each entry is a category/subcategory node { id, name, folder, subcategories?, photos?, thumbnail?, totalCount? }
   const [selectionStack, setSelectionStack] = useState([]);
@@ -304,102 +310,30 @@ function App() {
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [selectedPhotos, setSelectedPhotos] = useState(new Set());
-  // Local page state: 'categories' | 'vacations'
-  const [page, setPage] = useState('categories');
+  // Local page state: 'categories' | 'trips' | 'profile' — default to profile
+  const [page, setPage] = useState('profile');
 
-  // Vacation metadata (thumbnail + count) fetched up front for the Vacations page
+  // Vacation metadata (thumbnail + count) fetched up front for the Trips page
   const [vacationMeta, setVacationMeta] = useState({});
-
-  // Simple NavBar component
-  const NavBar = () => {
-    // consider the selection stack: if any entry originated from the Trips page,
-    // the Trips tab should remain visually active while exploring that group
-    const fromTrips = selectionStack && selectionStack.some && selectionStack.some(entry => entry && entry.__from === 'trips');
-    const isTripsActive = page === 'trips' || fromTrips;
-    const isCategoriesActive = page === 'categories' && !fromTrips;
-
-    return (
-      <nav className="site-nav">
-        <button className={`nav-button ${isCategoriesActive ? 'active' : ''}`} onClick={() => { setPage('categories'); setSelectionStack([]); }}>
-          Categories
-        </button>
-        <button className={`nav-button ${isTripsActive ? 'active' : ''}`} onClick={() => { setPage('trips'); setSelectionStack([]); }}>
-          Trips
-        </button>
-      </nav>
-    );
-  };
-
-  // Vacations page: show trip groups/folders
-  const TripsPage = () => (
-    <div className="vacations-page">
-      <h2 className="section-title">Trips</h2>
-      <div className="category-grid">
-        {VACATION_GROUPS.map((group) => (
-          <div
-            key={group.id}
-            className="category-card"
-            onClick={async () => {
-              // create a category-like object and load it
-              setCategoryLoading(true);
-              try {
-                console.log(`VacationsPage: loading group ${group.id} -> folder ${group.folder}`);
-                // Preserve subcategories (if present) by forwarding the whole group object
-                const catObj = { ...group };
-                const loaded = await loadCategoryData(catObj);
-                console.log('VacationsPage: loaded category data:', loaded);
-                // Mark that this selection originated from the Trips page so the back button can restore it
-                loaded.__from = 'trips';
-                setSelectionStack(prev => [...prev, loaded]);
-                // switch to the categories view (which shows the gallery behavior)
-                setPage('categories');
-              } catch (err) {
-                console.error('VacationsPage: failed to load group', group.id, err);
-                // Show a minimal UI hint
-                alert(`Failed to load ${group.name}: ${err.message || err}`);
-              } finally {
-                setCategoryLoading(false);
-              }
-            }}
-          >
-            <div className="category-image-wrapper">
-              <img src={vacationMeta[group.id]?.thumbnail?.secure_url || NO_IMAGE_SVG} alt={group.name} className="category-image" />
-              {group.subcategories && (
-                <div className="subcategory-badge">
-                  <FolderOpen size={16} />
-                  <span>{group.subcategories.length} subcategories</span>
-                </div>
-              )}
-            </div>
-            <div className="category-content">
-              <h2 className="category-name">{group.name}</h2>
-              <p className="category-count">{vacationMeta[group.id]?.totalCount === undefined ? '...' : `${vacationMeta[group.id].totalCount} ${vacationMeta[group.id].totalCount === 1 ? 'photo' : 'photos'}`}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 
   // Load category data on demand
   const loadCategoryData = async (category) => {
+    // Fetches manifest(s) for a category or its subcategories and normalizes the resulting node
+    // - For nodes with nested children we summarize subfolders instead of fetching an empty parent
+    // - Returns a category-like object including photos, thumbnail, and counts
     setCategoryLoading(true);
     try {
       let categoryData = { ...category };
       
       if (category.subcategories) {
-        // Load all subcategories
         const loadedSubs = await Promise.all(
           category.subcategories.map(async (sub) => {
-            // Skip if already loaded
             if (sub.photos && sub.photos.length > 0) return sub;
 
             try {
-              // If this subcategory itself contains nested subcategories, summarize them instead of fetching the empty parent folder
               if (sub.subcategories && sub.subcategories.length > 0) {
                 try {
                   const summary = await summarizeNode(sub);
-                  // prefer an explicit thumbnail tag for the sub, else use the found thumbnail
                   let subThumb = null;
                   try {
                     const tagName = `${sub.id}-thumbnail`;
@@ -409,7 +343,6 @@ function App() {
                       if (tagData.resources && tagData.resources.length > 0) subThumb = tagData.resources[0];
                     }
                   } catch (err) {
-                    // ignore
                   }
 
                   return {
@@ -424,15 +357,12 @@ function App() {
                 }
               }
 
-              // Use the full folder path (supports nested folders) for leaf subcategories
-              console.log(`Loading subcategory - ${sub.folder}`);
               const response = await fetch(`${API_BASE_PATH}/${sub.folder}`);
               if (!response.ok) {
                 const body = await response.text().catch(() => '');
                 throw new Error(`Manifest request failed: ${response.status} ${body}`);
               }
               const manifest = await response.json();
-              console.log(`Manifest for ${sub.folder}:`, manifest);
 
               const thumbnailImage = manifest["resources"].find(resource => 
                 resource.tags && resource.tags.includes("thumbnail")
@@ -454,7 +384,6 @@ function App() {
         categoryData.subcategories = loadedSubs;
         categoryData.totalCount = loadedSubs.reduce((sum, sub) => sum + sub.count, 0);
         
-        // Fetch outer category thumbnail
         try {
           const thumbnailTagName = `${category.id}-thumbnail`;
           const thumbnailResponse = await fetch(`${API_BASE_PATH}/thumbnail/${thumbnailTagName}`);
@@ -465,20 +394,16 @@ function App() {
             }
           }
         } catch (error) {
-          console.log(`No specific thumbnail found for ${category.name}`);
         }
       } else {
-        // Skip if already loaded
         if (!category.photos || category.photos.length === 0) {
           try {
-            console.log(`Loading category - ${category.folder}`);
             const response = await fetch(`${API_BASE_PATH}/${category.folder}`);
             if (!response.ok) {
               const body = await response.text().catch(() => '');
               throw new Error(`Manifest request failed: ${response.status} ${body}`);
             }
             const manifest = await response.json();
-            console.log(`Manifest for ${category.folder}:`, manifest);
             
             const thumbnailImage = manifest["resources"].find(resource => 
               resource.tags && resource.tags.includes("thumbnail")
@@ -496,7 +421,6 @@ function App() {
         }
       }
       
-      // Update categories array with loaded data
       setCategories(prev => prev.map(cat => 
         cat.id === category.id ? categoryData : cat
       ));
@@ -512,7 +436,8 @@ function App() {
 
   // Helper: recursively summarize a category/group node (sum counts, return first thumbnail)
   async function summarizeNode(node) {
-    // If node has nested subcategories, recurse
+    // Walks nested subcategory structure and sums photo counts.
+    // Also returns the first available thumbnail found while traversing children.
     if (node && node.subcategories && node.subcategories.length > 0) {
       let total = 0;
       let firstThumb = null;
@@ -528,7 +453,6 @@ function App() {
       return { total, thumbnail: firstThumb };
     }
 
-    // Leaf node: fetch manifest for the folder
     try {
       const folder = node.folder || '';
       if (!folder) return { total: 0, thumbnail: null };
@@ -546,13 +470,14 @@ function App() {
 
   // Load thumbnail counts on initial load (lightweight) — now uses recursive summarizer for categories with nested subcategories
   useEffect(() => {
+    // Loads small metadata for the Categories page so the grid can display thumbnails and counts quickly.
+    // Heavy photo manifests are only fetched when drilling into a category (loadCategoryData).
     const loadThumbnailCounts = async () => {
       setLoading(true);
       const updatedCategories = await Promise.all(
         PHOTO_CATEGORIES.map(async (category) => {
           try {
             if (category.subcategories) {
-              // Prefer tag-based thumbnail, but always summarize subfolders for accurate counts
               const thumbnailTagName = `${category.id}-thumbnail`;
               let thumbnailFromTag = null;
               try {
@@ -574,7 +499,6 @@ function App() {
                 totalCount: summary.total || 0
               };
             } else {
-              // Leaf category — fetch manifest directly
               try {
                 const response = await fetch(`${API_BASE_PATH}/${category.folder}`);
                 if (!response.ok) throw new Error(`Manifest request failed: ${response.status}`);
@@ -609,14 +533,13 @@ function App() {
 
     loadThumbnailCounts();
   }, []);
-
   // Load vacation metadata on initial load — use summarizeNode so groups with nested subfolders sum correctly
   useEffect(() => {
+    // Prefetches summary info for VACATION_GROUPS so the Trips page can show counts and thumbnails
     const loadVacationMeta = async () => {
       const meta = {};
       await Promise.all(VACATION_GROUPS.map(async (group) => {
         try {
-          // Prefer tag-based thumbnail (e.g. 'louisiana-thumbnail') for thumbnail selection
           const tagName = `${group.id}-thumbnail`;
           let thumbnailFromTag = null;
 
@@ -632,7 +555,6 @@ function App() {
             console.warn(`Thumbnail tag lookup failed for ${tagName}:`, err);
           }
 
-          // Use summarizer for groups (handles nested subfolders)
           const summary = await summarizeNode(group);
           const chosenThumb = thumbnailFromTag || summary.thumbnail || null;
           meta[group.id] = { thumbnail: chosenThumb, totalCount: summary.total || 0 };
@@ -676,17 +598,18 @@ function App() {
     }
   };
 
+  // goBack: pop selection stack and restore page/tab if a popped entry originally came from Trips
   const goBack = () => {
     if (selectionStack.length > 0) {
       setSelectionStack(prev => {
         const popped = prev[prev.length - 1];
         const newStack = prev.slice(0, -1);
-        // If the item we popped came from the Vacations page and we are now at the top level,
-        // restore the Vacations page instead of staying on Categories.
+        // If the item we popped came from the Trips page and we are now at the top level,
+        // restore the Trips page instead of staying on Categories.
         if (popped && popped.__from === 'trips' && newStack.length === 0) {
           setPage('trips');
-         }
-         return newStack;
+        }
+        return newStack;
       });
       setLightboxIndex(null);
       setSelectedPhotos(new Set());
@@ -715,10 +638,8 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [lightboxIndex, selectionStack]);
 
-  // Prevent body scroll when lightbox is open
   useEffect(() => {
     if (lightboxIndex !== null) {
-      // Store current scroll position
       const scrollY = window.scrollY;
       document.body.style.position = 'fixed';
       document.body.style.top = `-${scrollY}px`;
@@ -726,7 +647,6 @@ function App() {
       document.body.style.overflow = 'hidden';
       
       return () => {
-        // Restore scroll position
         document.body.style.position = '';
         document.body.style.top = '';
         document.body.style.width = '';
@@ -762,8 +682,8 @@ function App() {
       
       <header className="header">
         <div className="header-content">
-          <h1 className="title">Henry Swain Photography</h1>
-          <NavBar />
+          <h1 className="title" style={{ cursor: 'pointer' }} onClick={() => { setPage('profile'); setSelectionStack([]); }}>Henry Swain Photography</h1>
+          <NavBar page={page} setPage={setPage} selectionStack={selectionStack} setSelectionStack={setSelectionStack} />
           {showPhotos && selectedPhotos.size > 0 && (
             <div className="selection-info">
               {selectedPhotos.size} selected
@@ -779,57 +699,19 @@ function App() {
 
       <main className="main">
         {page === 'categories' && (
-          // top-level view if nothing selected
           !topNode ? (
-            <div className="category-grid">
-              {categories.map((category) => (
-                <div
-                  key={category.id}
-                  className="category-card"
-                  onClick={async () => {
-                    setCategoryLoading(true);
-                    const loaded = await loadCategoryData(category);
-                    // mark this selection as coming from the Categories page
-                    if (loaded) loaded.__from = 'categories';
-                    setSelectionStack(prev => [...prev, loaded]);
-                    setCategoryLoading(false);
-                  }}
-                >
-                  <div className="category-image-wrapper">
-                    <img 
-                      src={category.thumbnail?.secure_url || category.subcategories?.[0]?.thumbnail?.secure_url || NO_IMAGE_SVG} 
-                      alt={category.name}
-                      className="category-image"
-                      loading="lazy"
-                      onError={(e) => { e.target.onerror = null; e.target.src = NO_IMAGE_SVG; }}
-                    />
-                    {category.subcategories && (
-                      <div className="subcategory-badge">
-                        <FolderOpen size={16} />
-                        <span>{category.subcategories.length} subcategories</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="category-content">
-                    <h2 className="category-name">{category.name}</h2>
-                    <p className="category-count">{category.totalCount} photos</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <CategoriesPage categories={categories} loadCategoryData={loadCategoryData} setCategoryLoading={setCategoryLoading} setSelectionStack={setSelectionStack} NO_IMAGE_SVG={NO_IMAGE_SVG} />
           ) : topNode.subcategories && (!topNode.photos || topNode.photos.length === 0) ? (
             <div className="photo-section">
               <h2 className="section-title">{topNode.name}</h2>
               <div className="category-grid">
                 {topNode.subcategories.map((sub) => (
-                  console.log('Rendering subcategory card:', sub.id, 'hasSubcategories=', !!sub.subcategories, 'subcategoriesLength=', sub.subcategories?.length, 'count=', sub.count, 'photosLen=', sub.photos?.length),
                   <div
                     key={sub.id}
                     className="category-card subcategory-card"
                     onClick={async () => {
                       setCategoryLoading(true);
                       const loaded = await loadCategoryData(sub);
-                      // mark this selection as coming from the Categories page
                       if (loaded) loaded.__from = 'categories';
                       setSelectionStack(prev => [...prev, loaded]);
                       setCategoryLoading(false);
@@ -872,8 +754,9 @@ function App() {
           ) : null
         )}
 
-        {page === 'trips' && <TripsPage />}
-       </main>
+        {page === 'trips' && <TripsPage VACATION_GROUPS={VACATION_GROUPS} vacationMeta={vacationMeta} loadCategoryData={loadCategoryData} setCategoryLoading={setCategoryLoading} setSelectionStack={setSelectionStack} setPage={setPage} />}
+        {page === 'profile' && <ProfilePage />}
+        </main>
 
       {lightboxIndex !== null && currentPhotos.length > 0 && (
         <div className="lightbox" onClick={closeLightbox}>

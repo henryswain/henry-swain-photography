@@ -34,12 +34,10 @@
   color: #888;
 }
 
-/* NAVBAR: polished, minimal, non-disruptive styles */
 .site-nav {
   display: inline-flex;
   gap: 8px;
   align-items: center;
-  /* no margin/padding to avoid shifting layout */
   margin: 0;
   padding: 0;
 }
@@ -77,4 +75,42 @@
 
 @media (max-width: 480px) {
   .site-nav .nav-button { padding: 6px 10px; font-size: 14px; }
+
+  .profile-page .profile-grid {
+    flex-direction: column;
+  }
+  .profile-page .profile-photo {
+    width: 100%;
+  }
+  /* Make profile image use full width on small screens */
+  .profile-page .profile-photo .profile-image {
+    width: 100% !important;
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: contain !important;
+  }
+}
+
+.profile-page .profile-grid {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.profile-page .profile-photo .profile-image {
+  /* Preserve original aspect ratio without cropping */
+  width: auto;
+  height: auto;
+  max-width: 300px;
+  max-height: 400px;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  background-color: #f4f4f4;
+}
+
+.profile-page .profile-bio p {
+  margin-bottom: 1.25rem;
+  line-height: 1.6;
 }
