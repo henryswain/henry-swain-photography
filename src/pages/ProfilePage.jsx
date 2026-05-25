@@ -34,8 +34,8 @@ export default function ProfilePage() {
         </div>
         <div className="profile-bio">
           <p>
-            My name is Henry and I’m about to graduate from the University of 
-            Iowa with a BA in Informatics. Over the past few years, I’ve developed
+            My name is Henry and I completed my B.A. in Informatics and minor in Computer Science 
+            from the University of Iowa with University Honors in May 2026. Over the past few years, I’ve developed
             a strong interest in nature and wildlife photography, with a focus 
             on birds.  
           </p>
@@ -57,7 +57,7 @@ export default function ProfilePage() {
               southern Louisiana to the Cypress Swamps on special occasions.
           </p>
           <p>
-            While my primary birding location may change post graduation when 
+            While my primary birding location may change when 
             I land a career - I plan on moving to wherever I can get hired - I hope
              to continue to get outside into nature to improve my skills as a bird
               and wildlife photographer enthusiast.
