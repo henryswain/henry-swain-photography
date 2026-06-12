@@ -1,37 +1,101 @@
-// ProfilePage: renders the photographer's profile photo and bio
-// - Uses Vite's BASE_URL to compute public asset paths so the app works when deployed at a subpath
-// - Provides an inline SVG fallback if the profile image cannot be loaded
+/* ==========================================================================
+   Profile Page Component
+   Renders the photographer's "About Me" section, bio, and a responsive, 
+   progressive-loading profile photo.
+   ========================================================================== */
 
-import React from 'react';
+import { useRef, useEffect } from "react";
 
-// compute profile image URL using Vite's base path so assets resolve when site base is non-root
-let PROFILE_SRC = '/assets/profile.jpg';
-try {
-  const base = (import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-  // If the site is hosted at /henry-swain-photography/ we need to prefix that base
-  PROFILE_SRC = `${base.replace(/\/$/, '')}/assets/profile.jpg`.replace(/\/\//g, '/');
-} catch (e) {
-  PROFILE_SRC = '/assets/profile.jpg';
-}
+/* --- Asset Pathing Helpers --- */
+// Extracts the base URL defined in Vite config
+const base = import.meta.env.BASE_URL;
 
-// The PROFILE_FALLBACK is a tiny inline SVG used when the external image fails to load.
-// This ensures the layout remains stable and provides a clear visual placeholder.
-// Reference: https://css-tricks.com/using-svg/ (see "Data URI" section)
-const PROFILE_FALLBACK = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" style="width:100%;height:auto;">
-  <circle cx="50" cy="30" r="20" fill="#ccc" />
-  <rect x="15" y="60" width="70" height="30" rx="5" ry="5" fill="#ccc" />
-</svg>
-`;
+/**
+ * Utility to compute reliable public asset paths.
+ * Ensures that whether the base URL has a trailing slash or not, 
+ * the resulting path is formatted correctly without double slashes.
+ */
+const asset = (path) =>
+  `${base.replace(/\/$/, '')}/${path}`.replace(/\/\//g, '/');
+
+
 
 export default function ProfilePage() {
+  /* --- State & Refs --- */
+  // Refs to directly access DOM elements for the progressive loading effect
+  const imgRef = useRef(null);
+  const wrapperRef = useRef(null);
+
+  /* --- Lifecycle Hooks --- */
+  // Handles the edge case where the image is already cached by the browser.
+  // If it loads before the component mounts, the standard onLoad event won't fire,
+  // so we manually check and apply the 'loaded' class to remove the blur wrapper.
+  useEffect(() => {
+    if (imgRef.current?.complete) {
+      wrapperRef.current?.classList.add('loaded');
+    }
+  }, []);
+
   return (
     <div className="profile-page">
       <h2 className="section-title">About Me</h2>
       <div className="profile-grid">
         <div className="profile-photo">
-          <img src={PROFILE_SRC} alt="Profile" className="profile-image" onError={(e) => { e.target.onerror = null; e.target.src = `data:image/svg+xml;base64,${btoa(PROFILE_FALLBACK)}`; }} />
+          {/* Wrapper acts as a placeholder while the image loads.
+            Applying the 'loaded' class transitions opacity for a smooth reveal.
+          */}
+          <div
+            ref={wrapperRef}
+            className="blur-image-wrapper"
+            style={{ backgroundColor: '#e0e0e0' }}
+          >
+            {/* Responsive Picture Element
+              Serves next-gen formats (AVIF, WebP) to supported browsers, 
+              falling back to standard JPEG. Uses responsive breakpoints (300w, 600w, 960w) 
+              so mobile devices don't download unnecessarily large files.
+            */}
+            <picture>
+              <source
+                type="image/avif"
+                srcSet={`
+                  ${asset('assets/profile-300w.avif')} 300w,
+                  ${asset('assets/profile-600w.avif')} 600w,
+                  ${asset('assets/profile-960w.avif')} 960w
+                `}
+                sizes="(max-width: 480px) 100vw, 300px"
+              />
+              <source
+                type="image/webp"
+                srcSet={`
+                  ${asset('assets/profile-300w.webp')} 300w,
+                  ${asset('assets/profile-600w.webp')} 600w,
+                  ${asset('assets/profile-960w.webp')} 960w
+                `}
+                sizes="(max-width: 480px) 100vw, 300px"
+              />
+              <img
+                ref={imgRef}
+                src={asset('assets/profile-600w.jpg')}
+                srcSet={`
+                  ${asset('assets/profile-300w.jpg')} 300w,
+                  ${asset('assets/profile-600w.jpg')} 600w,
+                  ${asset('assets/profile-960w.jpg')} 960w
+                `}
+                sizes="(max-width: 480px) 100vw, 300px"
+                alt="Profile"
+                className="blur-image profile-image"
+                // Trigger the reveal animation once the network request finishes
+                onLoad={(e) => e.currentTarget.closest('.blur-image-wrapper').classList.add('loaded')}
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.currentTarget.closest('.blur-image-wrapper').classList.add('loaded');
+                }}
+              />
+            </picture>
+          </div>
         </div>
+
+        {/* --- Biography Section --- */}
         <div className="profile-bio">
           <p>
             My name is Henry and I completed my B.A. in Informatics and minor in Computer Science 

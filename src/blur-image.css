@@ -1,0 +1,41 @@
+/* .blur-image-wrapper {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+.blur-image-wrapper::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  animation: pulse 2.5s infinite;
+  background-color: white;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.blur-image-wrapper.loaded::before {
+  animation: none;
+  content: none;
+}
+
+.blur-image {
+  opacity: 0;
+  transition: opacity 250ms ease-in-out;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.blur-image-wrapper.loaded .blur-image {
+  opacity: 1;
+}
+
+
+@keyframes pulse {
+  0%   { opacity: 0; }
+  50%  { opacity: 0.1; }
+  100% { opacity: 0; }
+} */

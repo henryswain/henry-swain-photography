@@ -1,35 +1,46 @@
-// High-level application file: main React app, gallery layout, and data loaders
-// - Contains the JustifiedGallery component (renders photo rows)
-// - `App` holds global UI state and orchestrates data loading via the backend API
-// - Helper functions near the top provide safe URL handling and display name cleaning
-// - Category and vacation group configuration lived here for convenience
+/* ==========================================================================
+   Main Application Entry Point
+   Handles routing (via state), data fetching, navigation stack, 
+   gallery rendering, and fullscreen lightbox functionality.
+   ========================================================================== */
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+
 import { X, ChevronLeft, ChevronRight, FolderOpen } from 'lucide-react';
 import './gallery.css';
 import './App.css';
 import NavBar from './components/NavBar';
 import TripsPage from './pages/TripsPage';
+import BlurImage from './components/BlurImage';
 import ProfilePage from './pages/ProfilePage';
 import CategoriesPage from './pages/CategoriesPage';
  
-// inline "no picture" SVG (encoded) — used as the only fallback
+/* --- Constants & Configuration --- */
+
+// Inline "no picture" SVG (encoded) — used as a lightweight fallback when images fail to load
 const NO_IMAGE_SVG = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23e6e6e6" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999" font-size="18"%3ENo Image%3C/text%3E%3C/svg%3E';
+
+// Environment targets for API requests
+
 const API_BASE_PATH = 'https://henry-swain-photography-backend.vercel.app';
 // const API_BASE_PATH = 'http://localhost:3000'
-// const API_BASE_PATH = "http://192.168.1.4:3000";
+// const API_BASE_PATH = "http://172.17.178.59:3000";
+// const API_BASE_PATH = "http://192.168.1.15:3000";
 
-// helper to clean up Cloudinary display names (remove random suffix, replace underscores with spaces)
+
+/**
+ * Cleans up Cloudinary filenames for UI display.
+ * Removes random alphanumeric suffixes and converts underscores to spaces.
+ * Example: "red_tailed_hawk_a1b2c3" -> "red tailed hawk"
+ */
 function cleanDisplayName(displayName) {
-  // Normalizes display names coming from Cloudinary so captions look pleasant
   if (!displayName) return '';
-  // Remove the random suffix after the last underscore (e.g., "bird_name_a1b2c3" -> "bird_name")
   const withoutSuffix = displayName.replace(/_[a-zA-Z0-9]{6}$/, '');
-  // Replace all underscores with spaces
   return withoutSuffix.replace(/_/g, ' ');
 }
 
-
+// Hierarchical definition of photo categories and subcategories
 const PHOTO_CATEGORIES = [
   {
     id: 'birds',
@@ -114,224 +125,129 @@ const VACATION_GROUPS = [
   { id: 'sax_zim_bog', name: 'Sax Zim Bog', folder: 'sax_zim_bog' },
 ];
 
-const TARGET_ROW_HEIGHT = 300; // Target height for each row in pixels
-const MARGIN = 4; // Gap between photos
-
-function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect, onLoadingChange }) {
-  // Renders photos into justified rows similar to Flickr-style galleries.
-  // - Measures image aspect ratios and then packs images into rows with a target row height
-  // - Calls onPhotoClick / onPhotoSelect for interaction
-  // - Not intended to be a generic library component; tuned to this application's needs
-  const [rows, setRows] = useState([]);
-  const [photoDimensions, setPhotoDimensions] = useState({});
-  const [orientation, setOrientation] = useState(0);
-  const [imagesLoaded, setImagesLoaded] = useState(false);
-  const containerRef = useRef(null);
-
-  // Listen for orientation changes
-  useEffect(() => {
-    const handleOrientationChange = (event) => {
-      const newOrientation = event?.target?.screen?.orientation?.angle || window.screen?.orientation?.angle || Date.now();
-      setOrientation(newOrientation);
-      // Force recalculation on next render
-      if (containerRef.current) {
-        containerRef.current.style.width = '100%';
-      }
-    };
-
-    const handleResize = () => {
-      // Use timestamp to force re-render on resize
-      setOrientation(Date.now());
-    };
-
-    window.addEventListener('orientationchange', handleOrientationChange);
-    window.addEventListener('resize', handleResize);
-    
-    return () => {
-      window.removeEventListener('orientationchange', handleOrientationChange);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
-
-  useEffect(() => {
-    const loadImageDimensions = async () => {
-      setImagesLoaded(false);
-      if (onLoadingChange) onLoadingChange(true);
-      
-      const dimensions = {};
-      
-      await Promise.all(
-        photos.map((photo, index) => {
-          return new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-              dimensions[index] = {
-                width: photo.width,
-                height: photo.height,
-                aspectRatio: photo.width / photo.height,
-              };
-              resolve();
-            };
-            img.onerror = () => {
-              dimensions[index] = {
-                width: 1,
-                height: 1,
-                aspectRatio: 1
-              };
-              resolve();
-            };
-            img.src = photo.secure_url;
-          });
-        })
-      );
-      
-      setPhotoDimensions(dimensions);
-      setImagesLoaded(true);
-      if (onLoadingChange) onLoadingChange(false);
-    };
-
-    if (photos.length > 0) {
-      loadImageDimensions();
-    }
-  }, [photos, onLoadingChange]);
-
-  useEffect(() => {
-    if (Object.keys(photoDimensions).length === 0 || !containerRef.current) return;
-
-    const containerWidth = containerRef.current.offsetWidth;
-    const justifyPhotos = () => {
-      const newRows = [];
-      let currentRow = [];
-      let currentRowWidth = 0;
-
-      photos.forEach((photo, index) => {
-        const dim = photoDimensions[index];
-        if (!dim) return;
-
-        const photoWidth = TARGET_ROW_HEIGHT * dim.aspectRatio;
-        
-        if (currentRowWidth + photoWidth + (currentRow.length * MARGIN) <= containerWidth || currentRow.length === 0) {
-          currentRow.push({ photo, index, ...dim });
-          currentRowWidth += photoWidth;
-        } else {
-          newRows.push(currentRow);
-          currentRow = [{ photo, index, ...dim }];
-          currentRowWidth = photoWidth;
-        }
-      });
-
-      if (currentRow.length > 0) {
-        newRows.push(currentRow);
-      }
-
-      const justifiedRows = newRows.map((row, rowIndex) => {
-        const isLastRow = rowIndex === newRows.length - 1;
-        const totalMargin = (row.length - 1) * MARGIN;
-        const availableWidth = containerWidth - totalMargin;
-        
-        const rowAspectRatio = row.reduce((sum, item) => sum + item.aspectRatio, 0);
-        const rowHeight = isLastRow && row.length < 3 ? TARGET_ROW_HEIGHT : availableWidth / rowAspectRatio;
-
-        return row.map(item => ({
-          ...item,
-          displayWidth: rowHeight * item.aspectRatio,
-          displayHeight: rowHeight
-        }));
-      });
-
-      setRows(justifiedRows);
-    };
-
-    justifyPhotos();
-
-    const resizeObserver = new ResizeObserver(justifyPhotos);
-    resizeObserver.observe(containerRef.current);
-
-    return () => resizeObserver.disconnect();
-  }, [photoDimensions, photos, orientation]);
-
+/* ==========================================================================
+   Gallery Component
+   Renders a flexbox grid that perfectly justifies images of varying sizes.
+   ========================================================================== */
+function JustifiedGallery({ photos, onPhotoClick, selectedPhotos, onPhotoSelect }) {
   return (
-    <div ref={containerRef} className="justified-gallery">
-      {rows.map((row, rowIndex) => (
-        <div key={rowIndex} className="gallery-row">
-          {row.map((item) => (
-            <div
-              key={item.index}
-              className={`gallery-item ${selectedPhotos.has(item.index) ? 'selected' : ''}`}
-              style={{
-                width: `${item.displayWidth}px`,
-                height: `${item.displayHeight}px`,
-              }}
-              onClick={(e) => {
-                if (e.shiftKey || e.ctrlKey || e.metaKey) {
-                  onPhotoSelect(item.index);
-                } else {
-                  onPhotoClick(item.index);
-                }
-              }}
-            >
+    <section className="justified-gallery">
+      {photos.map((photo, index) => {
+        // Calculate width and flex-grow based on aspect ratio
+        // Using a base height of 200px to define the initial flex basis
+        const aspectRatio = photo.width / photo.height;
+        const baseHeight = 200;
+        const calculatedWidth = baseHeight * aspectRatio;
+        
+        return (
+          <div
+            key={index}
+            className={`gallery-item ${selectedPhotos.has(index) ? 'selected' : ''}`}
+            style={{
+              width: `${calculatedWidth}px`,
+              flexGrow: calculatedWidth,
+              // Lightweight placeholder image generated via Cloudinary transform
+              backgroundImage: `url(${photo.secure_url.replace('/upload/', '/upload/w_20/')})`,
+              backgroundSize: 'cover',
+              backgroundRepeat: 'no-repeat',
+            }}
+
+            
+            onClick={(e) => {
+              if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                onPhotoSelect(index);
+              } else {
+                onPhotoClick(index);
+              }
+            }}
+          >
+            {/* Aspect-ratio padding trick: creates padding-bottom to maintain aspect ratio */}
+            <i style={{ paddingBottom: `${(photo.height / photo.width) * 100}%` }}></i>
+
+            {/* Responsive image serving using next-gen formats */}
+            <picture>
+              <source type="image/avif" srcSet={`
+                ${photo.secure_url.replace('/upload/', '/upload/w_400,f_avif,q_auto/')} 400w,
+                ${photo.secure_url.replace('/upload/', '/upload/w_800,f_avif,q_auto/')} 800w
+              `} />
+              <source type="image/webp" srcSet={`
+                ${photo.secure_url.replace('/upload/', '/upload/w_400,f_webp,q_auto/')} 400w,
+                ${photo.secure_url.replace('/upload/', '/upload/w_800,f_webp,q_auto/')} 800w
+              `} />
               <img
-                src={item.photo.secure_url}
-                alt={item.photo.display_name}
+                ref={(el) => { if (el?.complete) el.closest('.gallery-item')?.classList.add('loaded'); }}
+                src={photo.secure_url.replace('/upload/', '/upload/w_500,f_auto,q_auto/')}
                 className="gallery-image"
+                sizes='400px'
+                alt={photo.display_name}
                 loading="lazy"
-                onError={(e) => { e.target.onerror = null; e.target.src = NO_IMAGE_SVG; }}
+                onLoad={(e) => e.currentTarget.closest('.gallery-item').classList.add('loaded')}
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = NO_IMAGE_SVG;
+                  e.currentTarget.closest('.gallery-item').classList.add('loaded');
+                }}
               />
-            {/* caption pulled from manifest second element */}
+            </picture>
+
+            {/* Photo overlay with caption */}
             <div className="photo-overlay">
-              <div className="photo-title">{cleanDisplayName(item.photo.display_name)}</div>
-              <div className="photo-number">{item.index + 1}</div>
+              <div className="photo-title">{cleanDisplayName(photo.display_name)}</div>
+              <div className="photo-number">{index + 1}</div>
+
             </div>
-              {selectedPhotos.has(item.index) && (
-                <div className="selection-overlay">
-                  <div className="selection-checkmark">✓</div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
+            {/* Selection indicator */}
+            {selectedPhotos.has(index) && (
+              <div className="selection-overlay">
+                <div className="selection-checkmark">✓</div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
+/* ==========================================================================
+   Main Application Component
+   ========================================================================== */
 function App() {
-  // Top-level application component
-  // State overview:
-  // - `categories`: configuration + lightweight metadata for each top-level category
-  // - `selectionStack`: breadcrumb-like stack representing drilling into nested folders
-  // - `page`: which main page is visible ('categories' | 'trips' | 'profile')
-  // - various loading flags and lightbox state
+  /* --- Global Application State --- */
   const [categories, setCategories] = useState(PHOTO_CATEGORIES);
-  // selection stack: each entry is a category/subcategory node { id, name, folder, subcategories?, photos?, thumbnail?, totalCount? }
+  const [vacationMeta, setVacationMeta] = useState({});
+  const [page, setPage] = useState('profile'); // Top-level routing: 'categories' | 'trips' | 'profile'
+
+
+/* --- Navigation & Gallery State --- */
+  // selectionStack acts as a breadcrumb trail for deep navigation into subfolders
   const [selectionStack, setSelectionStack] = useState([]);
   const [lightboxIndex, setLightboxIndex] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [categoryLoading, setCategoryLoading] = useState(false);
-  const [galleryLoading, setGalleryLoading] = useState(false);
   const [selectedPhotos, setSelectedPhotos] = useState(new Set());
-  // Local page state: 'categories' | 'trips' | 'profile' — default to profile
-  const [page, setPage] = useState('profile');
 
-  // Vacation metadata (thumbnail + count) fetched up front for the Trips page
-  const [vacationMeta, setVacationMeta] = useState({});
+  // Refs for tracking Lightbox image loading status
+  const lightboxImgRef = useRef(null);
+  const lightboxWrapperRef = useRef(null);
 
-  // Load category data on demand
+  /* --- Data Fetching Logic --- */
+
+  /**
+   * Fetches full photo manifests for a given category/subcategory.
+   * Triggered when a user clicks into a folder.
+   */
   const loadCategoryData = async (category) => {
-    // Fetches manifest(s) for a category or its subcategories and normalizes the resulting node
-    // - For nodes with nested children we summarize subfolders instead of fetching an empty parent
-    // - Returns a category-like object including photos, thumbnail, and counts
-    setCategoryLoading(true);
     try {
       let categoryData = { ...category };
       
       if (category.subcategories) {
+        // Load data for all subcategories in parallel
         const loadedSubs = await Promise.all(
           category.subcategories.map(async (sub) => {
             if (sub.photos && sub.photos.length > 0) return sub;
 
             try {
               if (sub.subcategories && sub.subcategories.length > 0) {
+                // If it's a folder containing more folders, summarize it rather than fetching all photos
                 try {
                   const summary = await summarizeNode(sub);
                   let subThumb = null;
@@ -357,6 +273,7 @@ function App() {
                 }
               }
 
+              // Fetch raw photo list from folder
               const response = await fetch(`${API_BASE_PATH}/${sub.folder}`);
               if (!response.ok) {
                 const body = await response.text().catch(() => '');
@@ -364,6 +281,7 @@ function App() {
               }
               const manifest = await response.json();
 
+              // Extract tagged thumbnail, fallback to first image
               const thumbnailImage = manifest["resources"].find(resource => 
                 resource.tags && resource.tags.includes("thumbnail")
               ) || manifest["resources"][0];
@@ -384,6 +302,7 @@ function App() {
         categoryData.subcategories = loadedSubs;
         categoryData.totalCount = loadedSubs.reduce((sum, sub) => sum + sub.count, 0);
         
+        // Fetch explicit category thumbnail if one exists
         try {
           const thumbnailTagName = `${category.id}-thumbnail`;
           const thumbnailResponse = await fetch(`${API_BASE_PATH}/thumbnail/${thumbnailTagName}`);
@@ -396,6 +315,7 @@ function App() {
         } catch (error) {
         }
       } else {
+        // Leaf node logic: just fetch the photos for this specific folder
         if (!category.photos || category.photos.length === 0) {
           try {
             const response = await fetch(`${API_BASE_PATH}/${category.folder}`);
@@ -421,23 +341,23 @@ function App() {
         }
       }
       
+      // Update global state with newly fetched data
       setCategories(prev => prev.map(cat => 
         cat.id === category.id ? categoryData : cat
       ));
       
-      setCategoryLoading(false);
       return categoryData;
     } catch (error) {
       console.error(`Failed to load category ${category.name}:`, error);
-      setCategoryLoading(false);
       return category;
     }
   };
 
-  // Helper: recursively summarize a category/group node (sum counts, return first thumbnail)
+/**
+   * Helper function to recursively summarize a deep nested folder structure.
+   * Walks the tree to sum photo counts and return the first available thumbnail.
+   */
   async function summarizeNode(node) {
-    // Walks nested subcategory structure and sums photo counts.
-    // Also returns the first available thumbnail found while traversing children.
     if (node && node.subcategories && node.subcategories.length > 0) {
       let total = 0;
       let firstThumb = null;
@@ -468,12 +388,21 @@ function App() {
     }
   }
 
-  // Load thumbnail counts on initial load (lightweight) — now uses recursive summarizer for categories with nested subcategories
+  /* --- Lifecycle Hooks --- */
+
+  // Reset lightbox loading wrapper when navigating between images
   useEffect(() => {
-    // Loads small metadata for the Categories page so the grid can display thumbnails and counts quickly.
-    // Heavy photo manifests are only fetched when drilling into a category (loadCategoryData).
+    if (lightboxWrapperRef.current) {
+      lightboxWrapperRef.current.classList.remove('loaded');
+    }
+    if (lightboxImgRef.current?.complete) {
+      lightboxWrapperRef.current?.classList.add('loaded');
+    }
+  }, [lightboxIndex]);
+
+  // Initial load: Fetch lightweight metadata for Top-Level Categories
+  useEffect(() => {
     const loadThumbnailCounts = async () => {
-      setLoading(true);
       const updatedCategories = await Promise.all(
         PHOTO_CATEGORIES.map(async (category) => {
           try {
@@ -528,14 +457,13 @@ function App() {
         })
       );
       setCategories(updatedCategories);
-      setLoading(false);
     };
 
     loadThumbnailCounts();
   }, []);
-  // Load vacation metadata on initial load — use summarizeNode so groups with nested subfolders sum correctly
+
+  // Initial load: Prefetch summary info for the Trips Page
   useEffect(() => {
-    // Prefetches summary info for VACATION_GROUPS so the Trips page can show counts and thumbnails
     const loadVacationMeta = async () => {
       const meta = {};
       await Promise.all(VACATION_GROUPS.map(async (group) => {
@@ -569,6 +497,13 @@ function App() {
     loadVacationMeta();
   }, []);
 
+  // Ensure scroll position resets to top when drilling down into a new category
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [selectionStack]);
+
+  /* --- UI Event Handlers --- */
+
   const getCurrentPhotos = () => {
     const top = selectionStack.length > 0 ? selectionStack[selectionStack.length - 1] : null;
     if (top && top.photos) {
@@ -598,21 +533,25 @@ function App() {
     }
   };
 
-  // goBack: pop selection stack and restore page/tab if a popped entry originally came from Trips
+  /**
+   * Handles "Back" navigation. 
+   * Pops the current directory off the selection stack.
+   * If popping returns us to the root, checks if we originally came from the Trips page to route properly.
+   */
   const goBack = () => {
     if (selectionStack.length > 0) {
       setSelectionStack(prev => {
         const popped = prev[prev.length - 1];
         const newStack = prev.slice(0, -1);
-        // If the item we popped came from the Trips page and we are now at the top level,
-        // restore the Trips page instead of staying on Categories.
+
+        // Restore routing based on entry origin
         if (popped && popped.__from === 'trips' && newStack.length === 0) {
           setPage('trips');
         }
         return newStack;
       });
       setLightboxIndex(null);
-      setSelectedPhotos(new Set());
+      setSelectedPhotos(new Set()); // Clear active selections on folder change
     }
   };
 
@@ -626,6 +565,7 @@ function App() {
     setSelectedPhotos(newSelected);
   };
 
+  // Keyboard navigation for Lightbox
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (lightboxIndex === null) return;
@@ -638,6 +578,7 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [lightboxIndex, selectionStack]);
 
+  // Lock body scroll when Lightbox is open to prevent background scrolling behind the portal
   useEffect(() => {
     if (lightboxIndex !== null) {
       const scrollY = window.scrollY;
@@ -656,30 +597,15 @@ function App() {
     }
   }, [lightboxIndex]);
 
-  if (loading) {
-    return (
-      <div className="app">
-        <div className="loading">
-          <div className="loading-spinner"></div>
-          <p>Loading gallery...</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Derived state values for rendering logic
   const currentPhotos = getCurrentPhotos();
   const topNode = selectionStack.length > 0 ? selectionStack[selectionStack.length - 1] : null;
+  
+  // Determine if we've reached a leaf node (a folder with actual photos and no more subdirectories)
   const showPhotos = topNode && topNode.photos && topNode.photos.length > 0 && (!topNode.subcategories || topNode.subcategories.length === 0);
 
   return (
     <div className="app">
-      {(categoryLoading || galleryLoading) && (
-        <div className="loading-overlay">
-          <div className="loading-spinner"></div>
-          <p>Loading photos...</p>
-        </div>
-      )}
-      
       <header className="header">
         <div className="header-content">
           <h1 className="title" style={{ cursor: 'pointer' }} onClick={() => { setPage('profile'); setSelectionStack([]); }}>Henry Swain Photography</h1>
@@ -698,10 +624,13 @@ function App() {
       </header>
 
       <main className="main">
+        {/* Category Page Router Logic */}
         {page === 'categories' && (
           !topNode ? (
-            <CategoriesPage categories={categories} loadCategoryData={loadCategoryData} setCategoryLoading={setCategoryLoading} setSelectionStack={setSelectionStack} NO_IMAGE_SVG={NO_IMAGE_SVG} />
+            // State 1: Top Level Directory
+            <CategoriesPage categories={categories} loadCategoryData={loadCategoryData} setSelectionStack={setSelectionStack} NO_IMAGE_SVG={NO_IMAGE_SVG} />
           ) : topNode.subcategories && (!topNode.photos || topNode.photos.length === 0) ? (
+            // State 2: Intermediate Directory (Contains more folders)
             <div className="photo-section">
               <h2 className="section-title">{topNode.name}</h2>
               <div className="category-grid">
@@ -710,20 +639,17 @@ function App() {
                     key={sub.id}
                     className="category-card subcategory-card"
                     onClick={async () => {
-                      setCategoryLoading(true);
                       const loaded = await loadCategoryData(sub);
                       if (loaded) loaded.__from = 'categories';
                       setSelectionStack(prev => [...prev, loaded]);
-                      setCategoryLoading(false);
                     }}
                   >
                     <div className="category-image-wrapper">
-                      <img
-                        src={sub.thumbnail?.secure_url || NO_IMAGE_SVG}
+                      <BlurImage
+                        src={sub.thumbnail?.secure_url}
                         alt={sub.name}
                         className="category-image"
-                        loading="lazy"
-                        onError={(e) => { e.target.onerror = null; e.target.src = NO_IMAGE_SVG; }}
+                        fallback={NO_IMAGE_SVG}
                       />
                       { (sub.subcategories && sub.subcategories.length > 0) && (
                         <div className="subcategory-badge">
@@ -741,6 +667,7 @@ function App() {
               </div>
             </div>
           ) : showPhotos ? (
+            // State 3: Leaf Directory (Render the gallery)
             <div className="photo-section">
               <h2 className="section-title">{topNode.name}</h2>
               <JustifiedGallery
@@ -748,17 +675,25 @@ function App() {
                 onPhotoClick={openLightbox}
                 selectedPhotos={selectedPhotos}
                 onPhotoSelect={togglePhotoSelection}
-                onLoadingChange={setGalleryLoading}
+                // onLoadingChange={setGalleryLoading}
               />
             </div>
           ) : null
         )}
 
-        {page === 'trips' && <TripsPage VACATION_GROUPS={VACATION_GROUPS} vacationMeta={vacationMeta} loadCategoryData={loadCategoryData} setCategoryLoading={setCategoryLoading} setSelectionStack={setSelectionStack} setPage={setPage} />}
+        {/* Trips Page Router */}
+        {page === 'trips' && <TripsPage VACATION_GROUPS={VACATION_GROUPS} vacationMeta={vacationMeta} loadCategoryData={loadCategoryData} setSelectionStack={setSelectionStack} setPage={setPage} NO_IMAGE_SVG={NO_IMAGE_SVG}/>}
+        
+        {/* Profile Page Router */}
         {page === 'profile' && <ProfilePage />}
         </main>
 
-      {lightboxIndex !== null && currentPhotos.length > 0 && (
+        {/* 
+          Lightbox Portal Overlay 
+          Uses React createPortal to render the lightbox safely at the top of the DOM structure, 
+          avoiding any z-index or overflow trapping issues from parent elements.
+        */}
+        {lightboxIndex !== null && currentPhotos.length > 0 && typeof document !== 'undefined' && createPortal(
         <div className="lightbox" onClick={closeLightbox}>
           <button className="lightbox-close" onClick={closeLightbox}>
             <X size={32} />
@@ -775,21 +710,113 @@ function App() {
               <ChevronLeft size={48} />
             </button>
           )}
+            <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+              <div
+                ref={lightboxWrapperRef}
+                className="blur-image-wrapper lightbox-blur-wrapper"
+                style={{
+                 // Forces the wrapper to match the aspect ratio of the image to ensure clean loading transitions
+                  aspectRatio: `${currentPhotos[lightboxIndex].width} / ${currentPhotos[lightboxIndex].height}`,
+                  backgroundImage: `url(${currentPhotos[lightboxIndex].secure_url.replace('/upload/', '/upload/w_50,f_auto,q_auto/')})`,
+                  backgroundSize: 'cover', 
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'center',
+                }}
+              >
+                <picture className="lightbox-picture">
+                  <source
+                    type="image/avif"
+                    srcSet={`
+                      ${currentPhotos[lightboxIndex].secure_url.replace('/upload/', '/upload/w_800,f_avif,q_auto:good/')} 800w,
+                      ${currentPhotos[lightboxIndex].secure_url.replace('/upload/', '/upload/w_1600,f_avif,q_auto:good/')} 1600w,
+                      ${currentPhotos[lightboxIndex].secure_url.replace('/upload/', '/upload/w_1920,f_avif,q_auto:good/')} 1920w
+                    `}
+                    sizes="100vw"
+                  />
+                  <source
+                    type="image/webp"
+                    srcSet={`
+                      ${currentPhotos[lightboxIndex].secure_url.replace('/upload/', '/upload/w_800,f_webp,q_auto:good/')} 800w,
+                      ${currentPhotos[lightboxIndex].secure_url.replace('/upload/', '/upload/w_1600,f_webp,q_auto:good/')} 1600w,
+                      ${currentPhotos[lightboxIndex].secure_url.replace('/upload/', '/upload/w_1920,f_webp,q_auto:good/')} 1920w
+                    `}
+                    sizes="100vw"
+                  />
+                  <img
+                    ref={lightboxImgRef}
+                    src={currentPhotos[lightboxIndex].secure_url.replace('/upload/', '/upload/w_1280,f_auto,q_auto:good/')}
+                    srcSet={`
+                      ${currentPhotos[lightboxIndex].secure_url.replace('/upload/', '/upload/w_800,f_auto,q_auto:good/')} 800w,
+                      ${currentPhotos[lightboxIndex].secure_url.replace('/upload/', '/upload/w_1600,f_auto,q_auto:good/')} 1600w,
+                      ${currentPhotos[lightboxIndex].secure_url.replace('/upload/', '/upload/w_1920,f_auto,q_auto:good/')} 1920w
+                    `}
+                    sizes="100vw"
+                    alt={currentPhotos[lightboxIndex].display_name}
+                    className="blur-image lightbox-image"
+                    onLoad={(e) => e.currentTarget.closest('.blur-image-wrapper').classList.add('loaded')}
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.currentTarget.closest('.blur-image-wrapper').classList.add('loaded')}
+                    }
+                  />
+                </picture>
 
-          <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-              <img
-                src={currentPhotos[lightboxIndex].secure_url}
-                alt={currentPhotos[lightboxIndex].display_name}
-                className="lightbox-image"
-              />
-              <p style={{ color: 'white', fontSize: '1.5rem' }}>{cleanDisplayName(currentPhotos[lightboxIndex].display_name)}</p>
-            <div className="lightbox-info">
-              <div className="lightbox-counter">
-                {lightboxIndex + 1} / {currentPhotos.length}
+                <p className="lightbox-caption">
+                  {cleanDisplayName(currentPhotos[lightboxIndex].display_name)}
+                </p>
+                <div className="lightbox-counter-badge">
+                  {lightboxIndex + 1} / {currentPhotos.length}
+                </div>
+              </div>
+
+              {/* 
+                HIDDEN PRELOADER 
+                Silently fetches the adjacent images (previous and next) in the array 
+                so they render instantly when the user clicks next/prev navigation buttons. 
+              */}
+              <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', visibility: 'hidden' }} aria-hidden="true">
+                {[lightboxIndex - 1, lightboxIndex + 1].map((preloadIndex) => {
+                  if (preloadIndex >= 0 && preloadIndex < currentPhotos.length) {
+                    const preloadPhoto = currentPhotos[preloadIndex];
+                    return (
+                      <picture key={`preload-${preloadIndex}`}>
+                        <source
+                          type="image/avif"
+                          srcSet={`
+                            ${preloadPhoto.secure_url.replace('/upload/', '/upload/w_800,f_avif,q_auto:good/')} 800w,
+                            ${preloadPhoto.secure_url.replace('/upload/', '/upload/w_1600,f_avif,q_auto:good/')} 1600w,
+                            ${preloadPhoto.secure_url.replace('/upload/', '/upload/w_1920,f_avif,q_auto:good/')} 1920w
+                          `}
+                          sizes="100vw"
+                        />
+                        <source
+                          type="image/webp"
+                          srcSet={`
+                            ${preloadPhoto.secure_url.replace('/upload/', '/upload/w_800,f_webp,q_auto:good/')} 800w,
+                            ${preloadPhoto.secure_url.replace('/upload/', '/upload/w_1600,f_webp,q_auto:good/')} 1600w,
+                            ${preloadPhoto.secure_url.replace('/upload/', '/upload/w_1920,f_webp,q_auto:good/')} 1920w
+                          `}
+                          sizes="100vw"
+                        />
+                        <img
+                          src={preloadPhoto.secure_url.replace('/upload/', '/upload/w_1280,f_auto,q_auto:good/')}
+                          srcSet={`
+                            ${preloadPhoto.secure_url.replace('/upload/', '/upload/w_800,f_auto,q_auto:good/')} 800w,
+                            ${preloadPhoto.secure_url.replace('/upload/', '/upload/w_1600,f_auto,q_auto:good/')} 1600w,
+                            ${preloadPhoto.secure_url.replace('/upload/', '/upload/w_1920,f_auto,q_auto:good/')} 1920w
+                          `}
+                          sizes="100vw"
+                          alt="preload"
+                          loading="eager" // Force immediate download
+                          decoding="async" // Prevent the main thread from blocking while it decodes
+                        />
+                      </picture>
+                    );
+                  }
+                  return null;
+                })}
               </div>
             </div>
-          </div>
-
           {lightboxIndex < currentPhotos.length - 1 && (
             <button
               className="lightbox-nav lightbox-next"
@@ -801,7 +828,8 @@ function App() {
               <ChevronRight size={48} />
             </button>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
